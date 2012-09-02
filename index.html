@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+<title>HTML5: What's the word, hummingbird?</title>
+<script type="text/javascript" src="https://www.google.com/jsapi"></script>
+<link rel="shortcut icon" href="/words/favicon.ico" />
+
+<script type="text/javascript">
+/**
+ * Configurations 
+ */
+var Config = { };
+
+Config.COLORSETS = {
+  "Blue"          : { fg: "#5C8A9A", bg: "#181818" },
+  "Tribal"        : { fg: "#7B3B3B", bg: "#2A2829" },
+  "Friends"       : { fg: "#99B2B7", bg: "#948C75" },
+  "Orange"        : { fg: "#F38630", bg: "#E0E4CC" }, 
+  "Cake"          : { fg: "#F1BBBA", bg: "#A79C8E" },
+  "Army"          : { fg: "#C1B18F", bg: "#686031" },
+  "Black & White" : { fg: "#000000", bg: "#FFFFFF" }
+};
+// TODO: There is supported for font stroke but I can't find any good color combinations for them
+
+Config.FONTS = {
+  'Codystar':    { face: "'Codystar',sans-serif", padding: 1 },
+  'Peralta':     { face: "'Peralta',sans-serif", padding: 2 },
+  'Satisfy':     { face: "'Satisfy',cursive", padding: 1, scale: 1.2 },
+  'Metal Mania': { face: "'Metal Mania',sans-serif", padding: 1, scale: 1.1 },
+  'Fredoka One': { face: "'Fredoka One',sans-serif", padding: 1 },
+  'Bonbon':      { face: "'Bonbon',cursive", padding: 1 },
+  'Montserrat':  { face: "'Montserrat',sans-serif", padding: 2 },
+  'Monofett':    { face: "'Monofett',cursive", padding: 1, scale: 1.1 }
+};
+
+Config.ROTATIONS = {
+  'Perpendicular': function() { return Math.PI/2 * Math.round(Math.random()); },
+  '0 to 180':      function() { return Math.PI/2 - Math.PI * Math.random();   }
+};
+
+Config.DEFAULT_COLORSET = "Blue";
+Config.DEFAULT_FONT = "Codystar";
+Config.DEFAULT_ROTATION = "Perpendicular";
+
+Config.MIN_WORD_LENGTH = 4;
+Config.MAX_WORD_LENGTH = 30;
+Config.FILTER_WORDS = (['have', 'that', 'with', 'would']).sort();
+
+Config.BASE_FONT_SIZE = 4;
+Config.OCCURENCE_CAP  = 16;
+Config.OCCURENCE_SIZE_FACTOR = 12;
+
+Config.WORDS_CAP = 200;
+
+Config.MOLD_WIDTH  = 1000;
+Config.MOLD_HEIGHT = 1000;
+
+Config.START_RANDOM_X = 25;
+Config.START_RANDOM_Y = 25;
+Config.START_SHIFT_X  = -75;
+Config.START_SHIFT_Y  = 0;
+
+Config.RADIUS_RANDOM_FACTOR = 2;
+Config.ANGLE_BASE = 12;
+Config.ANGLE_RANDOM_FACTOR = 3;
+
+Config.TEXT_BLEEDING = 4;
+
+
+/**
+ * Binary search (used to filter words)
+ */ 
+function binarySearchIter(item, arr, start, end) {
+  if (end <= start) {
+    if (arr[start] == item) return start;
+    return -1;
+  }
+  var middle = Math.floor((start + end) / 2);
+  if (item <= arr[middle]) {
+    return binarySearchIter(item, arr, start, middle);
+  } else {
+    return binarySearchIter(item, arr, middle+1, end);
+  }
+}
+
+function binarySearch(item, arr) {
+  return binarySearchIter(item, arr, 0, arr.length);
+}
+
+/**
+ * Controls - accepts user input from the controls
+ */
+var Controls = { };
+
+Controls.colorSet = Config.DEFAULT_COLORSET;
+Controls.font = Config.DEFAULT_FONT;
+Controls.rotation = Config.DEFAULT_ROTATION;
+
+Controls.getRotation = function() {
+  if (Config.ROTATIONS[Controls.rotation]) {
+    return Config.ROTATIONS[Controls.rotation](); 
+  }  
+  return 0;
+};
+
+Controls.getFontColor = function() {
+  return Config.COLORSETS[Controls.colorSet].fg;
+};
+
+Controls.getBackgroundColor = function() {
+  return Config.COLORSETS[Controls.colorSet].bg;
+};
+
+Controls.getStrokeColor = function() {
+  if (Config.COLORSETS[Controls.colorSet].stroke) {
+    return Config.COLORSETS[Controls.colorSet].stroke;
+  }
+  return null;
+};
+
+Controls.getFontFace = function() {
+  return Config.FONTS[Controls.font].face;
+};
+
+Controls.getFontStroke = function(size) {
+  if (Controls.getStrokeColor() === null) {
+    return 0;
+  }
+  if (Config.FONTS[Controls.font].strokeScale) {
+    return Math.floor(Config.FONTS[Controls.font].strokeScale * size);
+  }
+  if (Config.FONTS[Controls.font].stroke) {
+    return Config.FONTS[Controls.font].stroke;
+  }
+  return 0;
+};
+
+Controls.getFontPadding = function(size) {
+  if (Config.FONTS[Controls.font].padding) {
+    return (Controls.getFontStroke(size) / 2) + Config.FONTS[Controls.font].padding * 2;
+  }
+  return 0;
+};
+
+Controls.getFont = function(size) {
+  if (Config.FONTS[Controls.font].scale) {
+    size = Math.round(size * Config.FONTS[Controls.font].scale);
+  }
+  return size + "px " + Controls.getFontFace();
+};
+
+Controls.getWords = function() {
+  // TODO: Experiment with mapping/skewing the sizes to match a normal distribution
+
+  var text = document.getElementById('words').value;
+  var raws = text.split(/[^A-Za-z]/);
+
+  var occurences = { };
+  for (var i = 0; i < raws.length; i++) {
+    var raw = raws[i];
+
+    // Filter out words based on length
+    if (raw.length < Config.MIN_WORD_LENGTH) continue;
+    if (raw.length > Config.MAX_WORD_LENGTH) continue;
+    if (binarySearch(raw.toLowerCase(), Config.FILTER_WORDS) !== -1) continue;
+
+    occurences[raw] |= 0;
+    occurences[raw] += 1;
+  }
+
+  var words = [];
+  for (var word in occurences) {
+    var occurence = occurences[word];
+    var size = Math.round(Config.BASE_FONT_SIZE + Math.min(occurence, Config.OCCURENCE_CAP) * Config.OCCURENCE_SIZE_FACTOR);
+    var rotation = Controls.getRotation();
+
+    words.push(new Word(word, size, rotation));
+  }
+
+  // Sort by size descending
+  words.sort(function(a, b) { return b.size - a.size; });
+
+  // Limit to a max of 200 words
+  words = words.splice(0, Config.WORDS_CAP);
+
+  return words;
+};
+
+Controls.init = function() {
+  // Register handlers for various controls
+
+  var colorButtons = document.getElementsByClassName('colorset');
+  for (var i = 0; i < colorButtons.length; i++) {
+    colorButtons[i].onclick = (function(button) {
+      var hash = button.href.substring(button.href.indexOf("#")+1);
+      hash = decodeURIComponent(hash);
+      return function() {
+        Controls.colorSet = hash;
+        // Remove existing selection and highlight selected color
+        for (var j = 0; j < colorButtons.length; j++) {
+          colorButtons[j].className = colorButtons[j].className.replace("selected", "").trim();
+        }
+        button.className = button.className + " selected";
+        Generator.redraw();
+        return false;
+      };
+    })(colorButtons[i]);
+  }
+
+  var fontButtons = document.getElementsByClassName("font");
+  for (var i = 0; i < fontButtons.length; i++) {
+    fontButtons[i].onclick = (function(button) {
+      var hash = button.href.substring(button.href.indexOf("#")+1);
+      hash = decodeURIComponent(hash);
+      return function() {
+        Controls.font = hash;
+        // Remove existing selection and highlight selected font
+        for (var j = 0; j < fontButtons.length; j++) {
+          fontButtons[j].className = fontButtons[j].className.replace("selected", "").trim();
+        }
+        button.className = button.className + " selected";
+        Generator.generate();
+        return false;
+      };
+    })(fontButtons[i]);
+  }
+
+  var rotationButtons = document.getElementsByClassName("rotation");
+  for (var i = 0; i < rotationButtons.length; i++) {
+    rotationButtons[i].onclick = (function(button) {
+      var hash = button.href.substring(button.href.indexOf("#")+1);
+      hash = decodeURIComponent(hash);
+      return function() {
+        Controls.rotation = hash;
+        // Remove existing selection and highlight selected rotation
+        for (var j = 0; j < rotationButtons.length; j++) {
+          rotationButtons[j].className = rotationButtons[j].className.replace("selected", "").trim();
+        }
+        button.className = button.className + " selected";
+        Generator.generate();
+        return false;
+      };
+    })(rotationButtons[i]);
+  }
+
+  var words = document.getElementById("words");
+  words.onchange = function() {
+    Generator.generate();
+  };
+};
+
+Controls.enableSave = function(dataURL) {
+  if (dataURL.indexOf("data:image/png") !== 0) {
+    return;
+  }
+  var a = document.getElementById("save");
+  a.href = dataURL;
+  a.target = "_blank";
+  a.download = "hummingword.png";
+
+  // Enable the button if it is not already enabled
+  if (a.className.indexOf("enabled") === -1) {
+    a.className += " enabled fadeIn";
+    setTimeout(function() {
+      a.className = a.className.replace("fadeIn", "").trim();
+    }, 1400);
+  }
+};
+
+Controls.disableSave = function() {
+  var a = document.getElementById("save");
+  a.href = "#";
+  a.className = a.className.replace("enabled", "").replace("fadeIn", "").trim();
+};
+
+
+/**
+ * Color - parses hex or rgb() color strings into red, green, blue, and alpha values.
+ */
+var Color = function(r, g, b, a) {
+  this.r = r;
+  this.g = g;
+  this.b = b;
+  this.a = a;
+};
+
+Color.parse = function(color) {
+  var r = 0;
+  var g = 0;
+  var b = 0;
+  var a = 0;
+
+  if (color.indexOf('rgb') == 0) {
+    var values = color.substring(color.indexOf('(')+1, color.indexOf(')')).split(',');
+    r = parseInt(values[0]);
+    g = parseInt(values[1]);
+    b = parseInt(values[2]);
+    a = values[3] ? parseFloat(values[3]) : 1;
+  } else if (color.indexOf('#') == 0) {
+    var hex = color.substring(1);
+    if (hex.length == 3) {
+      hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
+    } 
+    var value = parseInt(hex, 16);
+    r = value >> 16 & 0xFF;
+    g = value >> 8  & 0xFF;
+    b = value       & 0xFF;
+    a = 1;
+  } else {
+    throw 'Unexpected color format: ' + color;
+  }
+  return new Color(r, g, b, a);
+};
+
+
+/**
+ * Text - convenience functions for canvas text
+ */
+var Text = function(canvas) {
+  this.canvas = canvas;
+  this.context = canvas.getContext("2d");
+};
+
+Text.prototype.computeBound = function(word) {
+  var measure = this.context.measureText(word.text);
+  return Math.max(measure.width, word.size) + Controls.getFontPadding(word.size) + Config.TEXT_BLEEDING * Grid.SIZE;
+};
+
+Text.prototype.draw = function(x, y, word, padding) {
+  var context = this.context;
+
+  context.fillStyle = Controls.getFontColor();
+  context.font = Controls.getFont(word.size);
+  context.textBaseline = "top";
+
+  var measure = context.measureText(word.text);
+  var bound = this.computeBound(word);
+
+  context.save();
+  context.translate(x + bound/2, y + bound/2);
+  context.rotate(word.rotation);
+ 
+  if (padding) {
+    context.lineWidth = Controls.getFontPadding(word.size);
+    context.strokeText(word.text, -measure.width/2, -word.size*3/4);
+  }
+
+  var stroke = Controls.getFontStroke(word.size);
+  if (stroke > 0) {
+    context.lineWidth = stroke;
+    context.strokeStyle = Controls.getStrokeColor();
+    context.strokeText(word.text, -measure.width/2, -word.size*3/4);
+  }
+
+  context.fillText(word.text, -measure.width/2, -word.size*3/4);
+  context.restore();
+};
+
+
+/**
+ * Word - encapsulates a word to be passed into the generator
+ */
+var Word = function(text, size, rotation) {
+  this.text = text;
+  this.size = size;
+  this.rotation = rotation;
+  this.bound = null;
+};
+
+
+/**
+ * Grid - subdivides the canvas into grids and uses it to detect word intersections
+ */
+var Grid = function(canvas) {
+  var columns = canvas.width  / Grid.SIZE;
+  var rows    = canvas.height / Grid.SIZE;
+
+  var grid = [];
+  for (var c = 0; c < columns; c++) {
+    if (!grid[c]) grid[c] = [];
+    for (var r = 0; r < rows; r++) {
+      grid[c][r] = false;
+    }
+  }
+
+  this.grid    = grid;
+  this.columns = columns;
+  this.rows    = rows;
+};
+
+Grid.SIZE = 10;
+
+Grid.prototype.intersect = function(cast, x, y) {
+  var column = Math.round(x / Grid.SIZE);
+  var row    = Math.round(y / Grid.SIZE);
+
+  for (var c = 0; c < cast.length; c++) {
+    for (var r = 0; r < cast[c].length; r++) {
+      // Ignore the intersection check if out of bounds
+      if ((column + c) >= this.columns || 
+          (row + r)    >= this.rows    ||
+          (column + c) < 0 || (row + r) < 0) continue;
+
+      if (cast[c][r] && this.grid[column + c][row + r]) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+Grid.prototype.imprint = function(cast, x, y) {
+  var column = Math.round(x / Grid.SIZE);
+  var row    = Math.round(y / Grid.SIZE);
+
+  for (var c = 0; c < cast.length; c++) {
+    for (var r = 0; r < cast[c].length; r++) {
+      if ((column + c) >= this.columns || 
+          (row + r)    >= this.rows    ||
+          (column + c) < 0 || (row + r) < 0) continue;
+
+      this.grid[column + c][row + r] |= cast[c][r];
+    }
+  }
+};
+
+Grid.snap = function(n) {
+  return Math.round(n / Grid.SIZE) * Grid.SIZE;
+};
+
+Grid.snapUp = function(n) {
+  return Math.ceil(n / Grid.SIZE) * Grid.SIZE;
+}
+
+
+/**
+ * Mold - creates a cast of a word (as a grid) used in word intersections
+ */
+var Mold = function() {
+  // Create a temporary canvas to compute the mold
+  var canvas = document.createElement("canvas");
+  canvas.setAttribute('width', Config.MOLD_WIDTH);
+  canvas.setAttribute('height', Config.MOLD_HEIGHT);
+
+  this.canvas = canvas;
+  this.context = canvas.getContext("2d");
+
+  this.text = new Text(canvas);
+};
+
+Mold.prototype.pour = function(word) {
+  // TODO (Optimization): "Trim" the casts
+  // TODO (Optimization): Typed arrays for grids (bitwise AND to detect intersections)
+
+  this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  this.text.draw(0, 0, word, true);
+
+  var cast = [];
+  
+  var bound = Grid.snapUp(this.text.computeBound(word));
+  var frame = this.context.getImageData(0, 0, bound, bound);
+
+  var blocks = bound/Grid.SIZE;
+
+  for (var c = 0; c < blocks; c++) {
+    if (!cast[c]) cast[c] = [];
+
+    next:
+    for (var r = 0; r < blocks; r++) {
+      cast[c][r] = false;
+
+      var base = Math.round(c * Grid.SIZE + r * blocks * Grid.SIZE * Grid.SIZE) * 4;
+      for (var x = 0; x < Grid.SIZE; x++) {
+        for (var y = 0; y < Grid.SIZE; y++) {
+          var index = base + x * 4 + y * frame.width * 4;
+          if (frame.data[index+3] != 0) {
+            cast[c][r] = true;
+            continue next;
+          }
+        }
+      }
+    }
+  }
+  return cast;
+};
+
+
+/**
+ * Debug
+ */ 
+var Debug = { };
+
+Debug.showGrid = function(canvas, grid) {
+  var context = canvas.getContext("2d");
+
+  context.strokeStyle = "rgba(0,0,0,1)";
+  context.fillStyle = "rgba(0,0,0,0.3)";
+  for (var c = 0; c < grid.length; c++) {
+    for (var r = 0; r < grid[c].length; r++){
+      if (grid[c][r]) {
+        context.fillRect(c*10,r*10,10,10);
+      }
+      context.strokeRect(c*10,r*10,10,10);
+    }
+  }
+};
+
+
+/**
+ * Generator - generates the word clouds
+ */
+var Generator = { };
+
+Generator.init = function() {
+  this.worker  = null;
+  this.timeout = null;
+
+  this.canvas = document.getElementById("canvas");
+  this.text = new Text(this.canvas);
+  this.mold = new Mold();
+
+  this.placements = [];
+  this.dimensions = { };
+
+  // Use worker threads if they are supported
+  if (!window.Worker) {
+    Generator.generate = Generator.generateWithoutWorker;
+  }
+};
+
+Generator.generate = function() {
+  try {
+    // Check for security exception
+    Generator.generateWithWorker();
+  } catch (e) { 
+    Generator.generate = Generator.generateWithoutWorker;
+    Generator.generate();
+    return;
+  }
+  Generator.generate = Generator.generateWithWorker;
+};
+
+
+Generator.generateWithWorker = function() {
+  var self = this; // self == Generator
+
+  self.placements = [];
+  Controls.disableSave();
+
+  var canvas = self.canvas;
+  var text   = self.text;
+  var mold   = self.mold;
+  var worker = self.worker;
+  var placements = self.placements;
+
+  var grid   = new Grid(canvas);
+  var words  = Controls.getWords();
+  var count  = 0;
+
+  // Create a new worker
+  if (worker) worker.terminate();
+  worker = new Worker("worker.js");
+  self.worker = worker;
+
+  if (words.length <= 0) {
+    window.showWarning("There are no words to generate.");
+    return;
+  }
+
+  worker.postMessage({
+    command: "init",
+    width:   canvas.width,
+    height:  canvas.height,
+    config:  Config
+  });
+
+  var placeWord = function() {
+    if (count >= words.length) {
+      Controls.enableSave(self.extractDataURL());
+      return;
+    }
+
+    var cast = mold.pour(words[count]);
+
+    worker.postMessage({
+      command: "word",
+      cast:    cast
+    });
+  };
+
+  worker.addEventListener("message", function(e) {
+    var data = e.data;
+    if (data.command == "word") {
+      var x = data.x;
+      var y = data.y;
+
+      text.draw(x, y, words[count]);
+      placements.push({ x : x, y : y, word : words[count] });
+
+      count += 1;
+
+      var progress = Math.round(count / words.length * 100);
+      var bar = document.getElementById("bar");
+      bar.className = bar.className.replace("fadeOut", "").trim();
+      bar.style.width   = progress + "%";
+      if (progress >= 100) {
+        bar.className += " fadeOut";
+      }
+
+      placeWord();
+    }
+  });
+
+  // Fill in the background
+  var context = canvas.getContext("2d");
+  context.fillStyle = Controls.getBackgroundColor();
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  placeWord();
+};
+
+Generator.generateWithoutWorker = function() {
+  var self = this; // self == Generator
+
+  self.placements = [];
+  if (self.timeout) clearTimeout(self.timeout);
+  Controls.disableSave();
+
+  var canvas = self.canvas;
+  var text   = self.text;
+  var mold   = self.mold;
+  var placements = self.placements;
+
+  var grid   = new Grid(canvas);
+  var words  = Controls.getWords();
+  var count  = 0;
+
+  if (words.length <= 0) {
+    window.showWarning("There are no words to generate.");
+    return;
+  }
+
+  var placeWord = function() {
+    if (count >= words.length) {
+      Controls.enableSave(self.extractDataURL());
+      return;
+    }
+
+    var word = words[count];
+    var cast = mold.pour(word);
+
+    var start = {
+      x : Grid.snap(canvas.width/2  + Math.round(Math.random() * 2 * Config.START_RANDOM_X - Config.START_RANDOM_X) + Config.START_SHIFT_X),
+      y : Grid.snap(canvas.height/2 + Math.round(Math.random() * 2 * Config.START_RANDOM_Y - Config.START_RANDOM_Y) + Config.START_SHIFT_Y)
+    };
+
+    var x = start.x;
+    var y = start.y;
+
+    var radius = 0;
+    var angle  = 0;
+
+    // Find an empty spot using Archimedean Spiral
+    while (grid.intersect(cast, x, y)) {
+
+      // Because x and y may not change after "snapping" to the grid, the
+      // inner loop keeps running until we arrive at a different x and y.
+      do {
+        radius += Math.random() * Config.RADIUS_RANDOM_FACTOR;
+        angle  += Math.PI / (Math.random() * Config.ANGLE_RANDOM_FACTOR + Config.ANGLE_BASE);
+
+        var next = {
+          x : Grid.snap(Math.round(start.x + radius * Math.cos(angle))),
+          y : Grid.snap(Math.round(start.y + radius * Math.sin(angle)))
+        };
+      } while (next.x == x && next.y == y);
+
+      x = next.x;
+      y = next.y;
+    }
+
+    text.draw(x, y, word);
+    grid.imprint(cast, x, y);
+
+    placements.push({ x : x, y : y, word : word });
+
+    count += 1;
+
+    var progress = Math.round(count / words.length * 100);
+    var bar = document.getElementById("bar");
+    bar.className = bar.className.replace("fadeOut", "").trim();
+    bar.style.width   = progress + "%";
+    if (progress >= 100) {
+      bar.className += " fadeOut";
+    }
+
+    self.timeout = setTimeout(placeWord, 0);
+  };
+
+  // Fill in the background
+  var context = canvas.getContext("2d");
+  context.fillStyle = Controls.getBackgroundColor();
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  self.timeout = setTimeout(placeWord, 0);
+};
+
+Generator.redraw = function() {
+  var self = this; // self == Generator
+
+  var canvas = self.canvas;
+  var text   = self.text;
+
+  // Fill in the background
+  var context = canvas.getContext("2d");
+  context.fillStyle = Controls.getBackgroundColor();
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Redraw each word 
+  var placements = Generator.placements;
+  for (var i = 0; i < placements.length; i++) {
+    text.draw(placements[i].x, placements[i].y, placements[i].word);
+  }
+
+  // Reset the save URL
+  var save = document.getElementById("save");
+  if (save.className.indexOf("enabled") !== -1) {
+    Controls.enableSave(Generator.extractDataURL(true));
+  }
+  return false;
+};
+
+Generator.extractDataURL = function(cachedSize) {
+  // TODO (Optimization): There has ought to be a better way of trimming it
+  if (this.placements.length <= 0) return "#";
+
+  var canvas = this.canvas;
+
+  var bg = Controls.getBackgroundColor();
+  var c  = Color.parse(bg);
+
+  var frame = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+
+  if (cachedSize) {
+    var start = Generator.dimensions.start;
+    var end   = Generator.dimensions.end;
+  } else {
+    var start = { x: 0, y: 0 };
+    var end   = { x: frame.width-1, y: frame.height-1 };
+
+    trimLeft: for (var x = start.x; x < frame.width; x++) {
+      for (var y = 0; y < frame.height; y++) {
+        var index = (y * frame.width + x) * 4;
+        if (frame.data[index] != c.r || frame.data[index+1] != c.g || frame.data[index+2] != c.b) {
+          start.x = x;
+          break trimLeft;
+        }
+      }
+    }
+
+    trimRight: for (var x = end.x; x >=0; x--) {
+      for (var y = 0; y < frame.height; y++) {
+        var index = (y * frame.width + x) * 4;
+        if (frame.data[index] != c.r || frame.data[index+1] != c.g || frame.data[index+2] != c.b) {
+          end.x = x;
+          break trimRight;
+        }
+      }
+    }
+
+    trimTop: for (var y = start.y; y < frame.height; y++) {
+      for (var x = start.x; x < end.x; x++) {
+        var index = (y * frame.width + x) * 4;
+        if (frame.data[index] != c.r || frame.data[index+1] != c.g || frame.data[index+2] != c.b) {
+          start.y = y;
+          break trimTop;
+        }
+      }
+    }
+
+    trimBottom: for (var y = end.y; y >= start.y; y--) {
+      for (var x = start.x; x < end.x; x++) {
+        var index = (y * frame.width + x) * 4;
+        if (frame.data[index] != c.r || frame.data[index+1] != c.g || frame.data[index+2] != c.b) {
+          end.y = y;
+          break trimBottom;
+        }
+      }
+    }
+
+    Generator.dimensions.start = start;
+    Generator.dimensions.end   = end;
+  }
+
+  // Pad each side with 20px of background color
+  width  = end.x - start.x + 20 + 20;
+  height = end.y - start.y + 20 + 20;
+
+  // Create a temporary canvas to store the frame data
+  var temp = document.createElement('canvas');
+  temp.width  = width;
+  temp.height = height;
+
+  var context = temp.getContext("2d");
+  context.fillStyle = bg;
+  context.fillRect(0, 0, width, height);
+  context.putImageData(frame, -start.x + 20, -start.y + 20);
+
+  return temp.toDataURL("image/png");
+};
+
+
+/**
+ * Initialization - attaching load listeners and fetching fonts
+ */
+var ready = {
+  DOM: false,
+  fonts: false
+};
+
+var init = function() {
+  // Generate the preview when the DOM and fonts are loaded 
+  if (!ready.DOM || !ready.fonts) {
+    return;
+  }
+
+  Controls.init();
+  Generator.init();
+  Generator.generate();
+};
+
+var warnings = [];
+var showWarning = function(message) {
+  if (!ready.DOM) {
+    warnings.push(message);
+    return;
+  }
+  var warning = document.createElement("div");
+  warning.className += "warning";
+  warning.innerHTML = "<strong>WARNING:</strong> " + message;
+  document.getElementById("messages").appendChild(warning);
+  setTimeout(function() { warning.className += " fade";   }, 3000);
+  setTimeout(function() { warning.style.display = "none"; }, 4000);
+};
+window.showWarning = showWarning;
+
+if (!window.google) {
+  showWarning("Google JS API cannot be loaded. Please check your Internet connection. In the meantime, some fonts may not look right.");
+  ready.fonts = true;
+} else {
+  google.load("webfont", "1");
+  google.setOnLoadCallback(function() {
+    var families = [];
+    for (var font in Config.FONTS) {
+      families.push(font);
+    }
+    WebFont.load({
+      google: {
+        families: families
+      },
+      active: function() {
+        ready.fonts = true;
+        init();
+      },
+      inactive: function() {
+        showWarning("One or more fonts cannot be loaded. In the meantime, some fonts may not look right.");
+        ready.fonts = true;
+        init();
+      }
+    });
+  });
+}
+
+window.onload = function() {
+  // Check for unsupported browsers
+  var supported = false;
+  if (document.getElementsByClassName) {
+    var detect = document.createElement("canvas");
+    if (detect.getContext) {
+      var context = detect.getContext("2d");
+      if (typeof context.fillText == "function") {
+        supported = true;
+      }
+    }
+  }
+
+  if (supported) {
+    ready.DOM = true;
+    for (var i = 0; i < warnings.length; i++) {
+      showWarning(warnings[i]);
+    }
+
+    // Enable fullscreen if it is supported
+    var documentElement = document.documentElement;
+    if (documentElement.requestFullscreen || 
+        documentElement.webkitRequestFullScreen || 
+        documentElement.mozRequestFullScreen) {
+
+      document.getElementById("fullscreen").onclick = function() {
+        if (documentElement.mozRequestFullScreen) {
+          documentElement.mozRequestFullScreen();
+        } else if (documentElement.webkitRequestFullScreen) {
+          documentElement.webkitRequestFullScreen();
+        } else {
+          documentElement.requestFullscreen();
+        }
+        return false;
+      };
+
+      var screenChange = function() {
+        // Add a 'fullscreen' class (pseudo-selector requires too much copy and paste)
+        if (document.fullscreen || document.webkitIsFullScreen || document.mozFullScreen) {
+          documentElement.className += " fullscreen";
+        } else {
+          documentElement.className = documentElement.className.replace("fullscreen", "").trim();
+        }
+      };
+
+      document.addEventListener("fullscreenchange", screenChange);
+      document.addEventListener("mozfullscreenchange", screenChange);
+      document.addEventListener("webkitfullscreenchange", screenChange);
+    }
+
+    init();
+  } else {
+    // Browser does not meet minimum requirements, so cover up with error screen
+    var overlay = document.getElementById("unsupported");
+    overlay.style.display = "block";
+    document.body.className += " unsupported";
+  }
+};
+
+
+</script>
+
+<style>
+/* Eric Meyer's Reset CSS v2.0 - http://cssreset.com */
+html,body,div,span,applet,object,iframe,h1,h2,h3,h4,h5,h6,p,blockquote,pre,a,abbr,acronym,address,big,cite,code,del,dfn,em,img,ins,kbd,q,s,samp,small,strike,strong,sub,sup,tt,var,b,u,i,center,dl,dt,dd,ol,ul,li,fieldset,form,label,legend,table,caption,tbody,tfoot,thead,tr,th,td,article,aside,canvas,details,embed,figure,figcaption,footer,header,hgroup,menu,nav,output,ruby,section,summary,time,mark,audio,video{border:0;font-size:100%;font:inherit;vertical-align:baseline;margin:0;padding:0}article,aside,details,figcaption,figure,footer,header,hgroup,menu,nav,section{display:block}body{line-height:1}ol,ul{list-style:none}blockquote,q{quotes:none}blockquote:before,blockquote:after,q:before,q:after{content:none}table{border-collapse:collapse;border-spacing:0}
+
+body { 
+  background-color: #181818;
+  color: #858585;
+  font-family: Arial,Helvetica,sans-serif;
+  font-size: 11px;
+}
+
+a, a:active { 
+  color: #757575;
+}
+a:visited { 
+  color: #555555;
+}
+a:hover { 
+  text-decoration: none;
+}
+
+h1, h2 {
+  font-family: Codystar,Arial,Helvetica,sans-serif;
+  font-size: 20px;
+  text-transform: uppercase;
+  color: #5c8a9a;
+  margin: 0 0 10px 0;
+}
+
+p {
+  text-align: justify;
+  line-height: 16px;
+  margin: 5px 0;
+}
+p.divider {
+  border-top: 1px solid #333333;
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+#preview {
+  height: 450px;
+  margin: 0 auto;
+  border-bottom: 1px solid #353535;
+  position: relative;
+  overflow: hidden;
+}
+
+#canvas { 
+  display: block; 
+  position: absolute; 
+  left: 50%;
+  margin: 0 0 0 -1000px;
+  top: -950px;
+  background-color: #181818; 
+}
+
+#save {
+  text-indent: -9999px;
+  width: 100px;
+  height: 100px;
+  position: absolute;
+  left: 50%;
+  background-color: #181818;
+  border: 1px solid #353535;
+  border-bottom: 0;
+  border-top-left-radius: 5px;
+  -webkit-border-top-left-radius: 5px;
+  -moz-border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
+  -webkit-border-top-right-radius: 5px;
+  -moz-border-top-right-radius: 5px;
+  margin: 0 0 0 360px;
+  top: 450px;
+  opacity: 0;
+  background-image: url("download.png");
+}
+
+#save.enabled {
+  color: #222222;
+  text-decoration: none;
+  top: 350px;
+  opacity: 0.5;
+}
+
+#save.enabled:hover {
+  opacity: 0.8;
+}
+
+#save.fadeIn {
+  transition: top 1s ease-in-out 0s, opacity 0.7s ease-out 0.7s;
+  -webkit-transition: top 1s ease-in-out 0s, opacity 0.7s ease-out 0.7s;
+  -moz-transition: top 1s ease-in-out 0s, opacity 0.7s ease-out 0.7s;
+}
+
+#content {
+  width: 960px;
+  margin: 0 auto 70px auto;
+}
+
+#about {
+  width: 300px;
+  margin: 20px 10px;
+  float: left;
+}
+
+#customize {
+  width: 610px;
+  margin: 20px 10px;
+  float: right;
+}
+
+.controls {
+  float: left;
+  margin: 0 0 15px 0;
+}
+
+label {
+  text-transform: uppercase;
+  color: #4d4d4d;
+  display: block;
+  width: 100px;
+  float: left;
+}
+
+.colorsets {
+  width: 501px;
+  float: left;
+  margin: -10px 0 0 -1px;
+}
+
+.colorset {
+  float: left;
+  display: block;
+  width: 52px;
+  margin: 0 10px 5px 0;
+  padding: 1px 0px 1px 1px;
+  border: 1px solid #3d3d3d;
+  transition: border 0.25s ease-in;
+  -webkit-transition: border 0.25s ease-in;
+  -moz-transition: border 0.25s ease-in;
+}
+
+.colorset:hover {
+  border: 1px solid #5d5d5d;
+}
+
+.colorset.selected {
+  border: 1px solid #a9a9a9;
+}
+
+.colorset span {
+  width: 25px;
+  height: 25px;
+  display: block;
+  float: left;
+  margin: 0 1px 0 0;
+}
+
+.buttons {
+  width: 500px;
+  line-height: 20px;
+  vertical-align: top;
+  margin-top: -4px;
+  display: inline-block;
+}
+
+.button, .button:visited {
+  font-size: 12px;
+  text-decoration: none;
+  width: 125px;
+  display: inline-block;
+  color: #3d3d3d;
+  transition: color 0.25s ease-in;
+  -webkit-transition: color 0.25s ease-in;
+  -moz-transition: color 0.25s ease-in;
+}
+
+.button:hover {
+  color: #5d5d5d;
+}
+
+.button.selected {
+  color: #a9a9a9;
+}
+
+#words {
+  width: 498px;
+  margin: 0 0 -2px 0;
+  padding: 2px;
+  color: #858585;
+  font-size: 11px;
+  font-family: Arial,Helvetica;
+  background-color: #181818;
+  border: 1px solid #353535;
+}
+
+.clear {
+  clear: both;
+}
+
+.badassdon {
+}
+
+.hummingbird {
+}
+
+#messages {
+  position: absolute;
+  z-index: 2;
+  width: 500px;
+  margin-left: -250px;
+  top: 0;
+  left: 50%;
+}
+
+#messages div {
+  width: 480px;
+  padding: 10px;
+  margin: 10px auto;
+  border: 1px solid;
+  border-radius: 5px;
+  -webkit-border-radius: 5px;
+  -moz-border-radius: 5px;
+}
+
+#messages div.error {
+  color: #6e2525;
+  border-color: #a83434;
+  background-color: #ff8f8f;
+}
+
+#messages div.warning {
+  color: #858121;
+  background-color: #fffb8f;
+  border-color: #9c9838;
+}
+
+#messages strong {
+  font-weight: bold;
+}
+
+#messages div.fade {
+  opacity: 0;
+  transition: opacity 1s ease-out;
+  -webkit-transition: opacity 1s ease-out;
+  -moz-transition: opacity 1s ease-out;
+}
+
+body.unsupported {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#unsupported {
+  width: 100%;
+  height: 100%;
+  display: none;
+  background: #181818;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+}
+
+#unsupported .center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 500px;
+  margin: -110px 0 0 -250px;
+}
+
+#unsupported h2 {
+  color: #adadad;
+  margin-bottom: 10px;
+  line-height: 25px;
+}
+
+#unsupported a.button {
+  color: #adadad;
+  font-family: 'Codystar',Arial,Helvetica,sans-serif;
+  text-decoration: none;
+  display: inline-block;
+  width: 220px;
+  margin: 0 10px 0 0;
+  font-size: 16px;
+  border: 1px solid #181818;
+  padding: 5px;
+  line-height: 32px;
+}
+
+#unsupported a.button:hover {
+  border: 1px solid #555555;
+}
+
+#unsupported .credits {
+  text-align: right;
+  margin-top: 40px;
+  color: #333333;
+}
+
+#unsupported .browser {
+  background-image: url(browsers32.png);
+  background-repeat: no-repeat;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0 10px 0 0;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+#unsupported .chrome {
+  background-position: 0 0;
+}
+#unsupported .firefox {
+  background-position: -37px 0;
+}
+
+#progress {
+  margin: 0 0 7px 0;
+  width: 100%;
+}
+
+#bar {
+  background: #2d2d2d;
+  width: 0%;
+  height: 3px;
+  display: inline-block;
+  vertical-align: top;
+}
+#bar.fadeOut {
+  opacity: 0;
+  transition: all 2s ease-out;
+  -webkit-transition: all 2s ease-out;
+  -moz-transition: all 2s ease-out;
+}
+
+html.fullscreen .controls-words {
+  display: none;
+}
+html.fullscreen #about {
+  display: none;
+}
+html.fullscreen #content {
+  background: #181818;
+  position: absolute;
+  bottom: 0;
+  margin: 0;
+  padding: 0;
+  height: 160px;
+  width: 100%;
+  z-index: 2;
+  border-top: 1px solid #353535;
+}
+html.fullscreen #customize {
+  width: 610px;
+  margin: 0 auto;
+  padding: 25px 0 0 0;
+  overflow: hidden;
+  float: none;
+}
+html.fullscreen #preview {
+  position: absolute;
+  height: 100%;
+  top: 0;
+  left: 0;
+  width: 100%;
+  border: 0;
+  overflow: hidden;
+  z-index: 1;
+}
+html.fullscreen #canvas {
+  top: 50%;
+  margin-top: -1200px;
+}
+html.fullscreen #progress {
+  position: absolute;
+  bottom: 142px;
+  z-index: 3;
+}
+html.fullscreen #save {
+  top: 100%;
+  left: 100%;
+  margin-left: -150px;
+  margin-top: 20px;
+}
+html.fullscreen #save.enabled {
+  margin-top: -260px;
+}
+html.fullscreen #save.fadeIn {
+  transition: margin-top 1s ease-in-out 0s, opacity 0.7s ease-out 0.7s;
+  -moz-transition: margin-top 1s ease-in-out 0s, opacity 0.7s ease-out 0.7s;
+  -webkit-transition: margin-top 1s ease-in-out 0s, opacity 0.7s ease-out 0.7s;
+}
+
+</style>
+
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-34381971-1']);
+_gaq.push(['_trackPageview']);
+
+(function() {
+ var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+ ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+ var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+ })();
+</script>
+
+</head>
+<body>
+<section id="messages"></section>
+
+<section id="preview">
+  <canvas id="canvas" width="2000" height="2000"></canvas>
+  <a href="#" id="save" title="Download">Download</a>
+</section>
+<div id="progress"><div id="bar"></div></div>
+
+<section id="content">
+  <section id="about">
+    <h1>What's the word, hummingbird?</h1>
+    <p>Create stunning word clouds right in your browser using nothing but <a href="http://en.wikipedia.org/wiki/HTML5" target="_blank">HTML5</a>. This is meant to be both a showcase and an experiment of basic HTML5 technologies. Yay!</p>
+
+    <p>The source code is <a href="https://github.com/badassdon/hummingword" target="_blank">available on github</a> under the <a href="http://en.wikipedia.org/wiki/MIT_License" target="_blank">MIT License</a>. Feel free to clone the repo and play around with the fonts, colors, and other parameters. Suggestions on how I can improve this are welcomed.</p>
+
+    <p>If you managed to read this far, then you deserve to see the <a href="#" id="fullscreen">fullscreen</a> mode (if your browser supports it).</p>
+
+    <p class="divider">Based on <a href="http://www.wordle.net" target="_blank">Wordle</a> by Jonathan Feinberg. I highly recommend checking them out. Fonts are from <a href="http://www.google.com/webfonts/" target="_blank">Google Web Fonts</a>.</p>
+
+    <p>Created by <a href="http://www.badassdon.com" class="badassdon" target="_blank">badassdon</a>.</p>
+  </section>
+
+  <section id="customize">
+    <div class="controls">
+      <label>Colors</label>
+      
+      <div class="colorsets">
+      <script type="text/javascript">
+        for (var colorset in Config.COLORSETS) {
+          var selected = (colorset == Controls.colorSet) ? ' selected' : '';
+          document.write('<a href="#' + colorset + '" class="colorset' + selected + '" title="' + colorset + '">');
+          document.write('<span style="background-color: ' + Config.COLORSETS[colorset].fg + '"></span>');
+          document.write('<span style="background-color: ' + Config.COLORSETS[colorset].bg + '"></span>');
+          document.write('</a>');
+        }
+      </script>
+      </div>
+    </div>
+
+    <div class="controls">
+      <label>Fonts</label>
+      <div class="fonts buttons">
+      <script type="text/javascript">
+        for (var font in Config.FONTS) {
+          var selected = (font == Controls.font) ? ' selected' : '';
+          document.write('<a href="#' + font + '" style="font-family:' + Config.FONTS[font].face + ';" class="font button ' + selected + '">' + font + '</a>');
+        }
+      </script>
+      </div>
+    </div>
+
+    <div class="controls">
+      <label>Rotation</label>
+      <div class="rotations buttons">
+      <script type="text/javascript">
+        for (var rotation in Config.ROTATIONS) {
+          var selected = (rotation == Controls.rotation) ? ' selected' : '';
+          document.write('<a href="#' + rotation + '" class="rotation button ' + selected + '">' + rotation + '</a>');
+        }
+      </script>
+      </div>
+    </div>
+
+    <div class="controls controls-words">
+      <label>Words</label>
+      <textarea id="words" rows="15">HTML5 is a markup language for structuring and presenting content for the World Wide Web, and is a core technology of the Internet originally proposed by Opera Software. It is the fifth revision of the HTML standard (created in 1990 and standardized as HTML4 as of 1997) and, as of August 2012, is still under development. Its core aims have been to improve the language with support for the latest multimedia while keeping it easily readable by humans and consistently understood by computers and devices (web browsers, parsers, etc.). HTML5 is intended to subsume not only HTML 4, but XHTML 1 and DOM Level 2 HTML as well.
+
+Following its immediate predecessors HTML 4.01 and XHTML 1.1, HTML5 is a response to the observation that the HTML and XHTML in common use on the World Wide Web are a mixture of features introduced by various specifications, along with those introduced by software products such as web browsers, those established by common practice, and the many syntax errors in existing web documents. It is also an attempt to define a single markup language that can be written in either HTML or XHTML syntax. It includes detailed processing models to encourage more interoperable implementations; it extends, improves and rationalises the markup available for documents, and introduces markup and application programming interfaces (APIs) for complex web applications. For the same reasons, HTML5 is also a potential candidate for cross-platform mobile applications. Many features of HTML5 have been built with the consideration of being able to run on low-powered devices such as smartphones and tablets. In December 2011 research firm Strategy Analytics forecast sales of HTML5 compatible phones will top 1 billion in 2013.
+
+In particular, HTML5 adds many new syntactical features. These include the new <video>, <audio> and <canvas> elements, as well as the integration of scalable vector graphics (SVG) content that replaces the uses of generic <object> tags and MathML for mathematical formulas. These features are designed to make it easy to include and handle multimedia and graphical content on the web without having to resort to proprietary plugins and APIs. Other new elements, such as <section>, <article>, <header> and <nav>, are designed to enrich the semantic content of documents. New attributes have been introduced for the same purpose, while some elements and attributes have been removed. Some elements, such as <a>, <cite> and <menu> have been changed, redefined or standardized. The APIs and document object model (DOM) are no longer afterthoughts, but are fundamental parts of the HTML5 specification. HTML5 also defines in some detail the required processing for invalid documents so that syntax errors will be treated uniformly by all conforming browsers and other user agents.
+
+
+Text from Wikipedia (http://en.wikipedia.org/wiki/HTML5).</textarea>
+    </div>
+  </section>
+  <div class="clear"></div>
+  <div class="hummingbird"></div>
+</section>
+
+<div id="unsupported">
+  <div class="center">
+    <h2>
+    Unfortunately, your browser does not meet the minimum requirements.<br/><br/>
+    Please upgrade your browser!
+    </h2>
+
+    <a href="https://www.google.com/chrome/" class="button"><span class="browser chrome"></span>Chrome</a>
+    <a href="http://www.mozilla.org/en-US/firefox/new/" class="button"><span class="browser firefox"></span>Firefox</a>
+
+    <div class="credits">Credits to <a href="http://paulirish.com/2010/high-res-browser-icons/" target="_blank">Paul Irish</a> for browser logos.</div>
+  </div>
+</div>
+
+</body>
+</html>
+
