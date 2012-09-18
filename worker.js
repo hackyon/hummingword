@@ -79,9 +79,10 @@ self.addEventListener('message', function(e) {
       break;
 
     case 'word':
+      offset = data.offset;
       var start = {
-        x : Grid.snap(width/2  + Math.round(Math.random() * 2 * Config.START_RANDOM_X - Config.START_RANDOM_X) + Config.START_SHIFT_X),
-        y : Grid.snap(height/2 + Math.round(Math.random() * 2 * Config.START_RANDOM_Y - Config.START_RANDOM_Y) + Config.START_SHIFT_Y)
+        x : Grid.snap(width/2  + Math.round(Math.random() * 2 * Config.START_RANDOM_X - Config.START_RANDOM_X) + Config.START_SHIFT_X - offset.x),
+        y : Grid.snap(height/2 + Math.round(Math.random() * 2 * Config.START_RANDOM_Y - Config.START_RANDOM_Y) + Config.START_SHIFT_Y - offset.y)
       };
 
       var x = start.x;

@@ -34,8 +34,8 @@ Config.FONTS = {
 };
 
 Config.ROTATIONS = {
-  'Perpendicular': function() { return Math.PI/2 * Math.round(Math.random()); },
-  '0 to 180':      function() { return Math.PI/2 - Math.PI * Math.random();   }
+  'Perpendicular': { },
+  '0 to 180':      { }
 };
 
 Config.DEFAULT_COLORSET = "Blue";
@@ -57,7 +57,7 @@ Config.MOLD_HEIGHT = 1000;
 
 Config.START_RANDOM_X = 25;
 Config.START_RANDOM_Y = 25;
-Config.START_SHIFT_X  = -75;
+Config.START_SHIFT_X  = 0;
 Config.START_SHIFT_Y  = 0;
 
 Config.RADIUS_RANDOM_FACTOR = 2;
@@ -97,8 +97,10 @@ Controls.font = Config.DEFAULT_FONT;
 Controls.rotation = Config.DEFAULT_ROTATION;
 
 Controls.getRotation = function() {
-  if (Config.ROTATIONS[Controls.rotation]) {
-    return Config.ROTATIONS[Controls.rotation](); 
+  if (Controls.rotation == 'Perpendicular') {
+    return Math.PI/2 * Math.round(Math.random());
+  } else if (Controls.rotation == '0 to 180') {
+    return Math.PI/2 - Math.PI * Math.random();
   }  
   return 0;
 };
@@ -326,6 +328,15 @@ Text.prototype.computeBound = function(word) {
   return Math.max(measure.width, word.size) + Controls.getFontPadding(word.size) + Config.TEXT_BLEEDING * Grid.SIZE;
 };
 
+Text.prototype.computeCenterOffset = function(word) {
+  var context = this.context;
+  context.font = Controls.getFont(word.size);
+  context.textBaseline = "top";
+
+  var measure = context.measureText(word.text);
+  return { x: measure.width/2, y: word.size*3/4 };
+};
+
 Text.prototype.draw = function(x, y, word, padding) {
   var context = this.context;
 
@@ -533,6 +544,7 @@ Generator.generate = function() {
     // Check for security exception
     Generator.generateWithWorker();
   } catch (e) { 
+    console.log(e);
     Generator.generate = Generator.generateWithoutWorker;
     Generator.generate();
     return;
@@ -581,10 +593,12 @@ Generator.generateWithWorker = function() {
     }
 
     var cast = mold.pour(words[count]);
+    var offset = text.computeCenterOffset(words[count]);
 
     worker.postMessage({
       command: "word",
-      cast:    cast
+      cast:    cast,
+      offset:  offset
     });
   };
 
@@ -648,10 +662,11 @@ Generator.generateWithoutWorker = function() {
 
     var word = words[count];
     var cast = mold.pour(word);
+    var offset = text.computeCenterOffset(word);
 
     var start = {
-      x : Grid.snap(canvas.width/2  + Math.round(Math.random() * 2 * Config.START_RANDOM_X - Config.START_RANDOM_X) + Config.START_SHIFT_X),
-      y : Grid.snap(canvas.height/2 + Math.round(Math.random() * 2 * Config.START_RANDOM_Y - Config.START_RANDOM_Y) + Config.START_SHIFT_Y)
+      x : Grid.snap(canvas.width/2  + Math.round(Math.random() * 2 * Config.START_RANDOM_X - Config.START_RANDOM_X) + Config.START_SHIFT_X - offset.x),
+      y : Grid.snap(canvas.height/2 + Math.round(Math.random() * 2 * Config.START_RANDOM_Y - Config.START_RANDOM_Y) + Config.START_SHIFT_Y - offset.y)
     };
 
     var x = start.x;
@@ -986,7 +1001,7 @@ p.divider {
   position: absolute; 
   left: 50%;
   margin: 0 0 0 -1000px;
-  top: -950px;
+  top: -875px;
   background-color: #181818; 
 }
 
@@ -1309,7 +1324,7 @@ html.fullscreen #preview {
 }
 html.fullscreen #canvas {
   top: 50%;
-  margin-top: -1200px;
+  margin-top: -1150px;
 }
 html.fullscreen #progress {
   position: absolute;
