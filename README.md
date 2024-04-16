@@ -1,4 +1,4 @@
-Hummingword - [HTML5 Word Clouds](http://www.hackyon.com/hummingword)
+Hummingword - [HTML5 Word Clouds](https://hackyon.github.io/hummingword/)
 ===============================
 
 Create stunning word clouds right in your browser using nothing but HTML5. This is meant to be both a showcase and an experiment of HTML5. This experiment requires the canvas element. The computation runs on WebWorkers when supported. There is also a HTML5 fullscreen mode. The generated image can be downloaded with the help of data-URI (not really HTML5, but still cool).
@@ -10,8 +10,6 @@ The source should be pretty self-explanatory, but feel free to contact me if you
 
 Credits
 --------------------------------------
-Created by [Donald Lau](http://www.badassdon.com).
-
 Based on [Wordle](http://www.wordle.net/) by Jonathan Feinberg. Fonts are from [Google Web Fonts](http://www.google.com/webfonts).
 
 
